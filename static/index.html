@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP Shield</title>
+<style>
+  :root{--bg:#0b1020;--panel:#131a30;--line:#222c4a;--text:#e6ebff;--muted:#8b97c2;
+        --ok:#2ecc8f;--bad:#ff5d6c;--accent:#5b8cff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+  header{padding:20px 28px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px}
+  .logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#8a5bff);display:grid;place-items:center;font-weight:700}
+  h1{font-size:20px;margin:0}
+  header small{color:var(--muted)}
+  main{max-width:1150px;margin:0 auto;padding:24px;display:grid;gap:20px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .stat b{display:block;font-size:32px}
+  .stat span{color:var(--muted);font-size:13px}
+  .grid{display:grid;grid-template-columns:1fr 1.2fr;gap:20px}
+  @media(max-width:850px){.grid,.stats{grid-template-columns:1fr}}
+  h2{font-size:15px;margin:0 0 12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  label{font-size:13px;color:var(--muted)}
+  input,select{width:100%;padding:10px 12px;margin:4px 0 12px;background:#0d1328;color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}
+  button{cursor:pointer;border:0;border-radius:8px;padding:10px 14px;font:inherit;font-weight:600;color:#fff;background:var(--accent)}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
+  .presets{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .presets button{background:#1b2547;font-size:12px;font-weight:500}
+  .verdict{margin-top:14px;padding:14px;border-radius:10px;display:none}
+  .verdict.ALLOWED{display:block;background:rgba(46,204,143,.12);border:1px solid var(--ok)}
+  .verdict.BLOCKED{display:block;background:rgba(255,93,108,.12);border:1px solid var(--bad)}
+  .tag{font-weight:700;font-size:12px;padding:2px 8px;border-radius:99px}
+  .tag.ALLOWED{background:var(--ok);color:#04251a}.tag.BLOCKED{background:var(--bad);color:#2b0409}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+  code{background:#0d1328;padding:1px 6px;border-radius:5px;font-size:12px}
+  .flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+  .flow div{padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:#0d1328;color:var(--text)}
+  .scroll{max-height:380px;overflow:auto}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">S</div>
+  <div><h1>MCP Shield</h1><small>Runtime security gateway for AI tool calls</small></div>
+</header>
+<main>
+  <div class="card"><div class="flow">
+    <div>AI Agent</div>→<div>MCP Shield (inspect + decide)</div>→<div>Tool / Files</div>→<div>Audit Log</div>
+  </div></div>
+
+  <div class="stats">
+    <div class="card stat"><b id="sTotal">0</b><span>Total requests</span></div>
+    <div class="card stat"><b id="sAllowed" style="color:var(--ok)">0</b><span>Allowed</span></div>
+    <div class="card stat"><b id="sBlocked" style="color:var(--bad)">0</b><span>Blocked</span></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Request simulator</h2>
+      <div class="presets" id="presets"></div>
+      <label>Tool</label>
+      <input id="tool" value="read_file">
+      <label>Path argument (for read_file)</label>
+      <input id="path" value="welcome.txt">
+      <button onclick="send()">Send through MCP Shield</button>
+      <button class="ghost" onclick="resetAll()">Reset log</button>
+      <div id="verdict" class="verdict"></div>
+    </div>
+    <div class="card">
+      <h2>Audit log</h2>
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Time</th><th>Tool</th><th>Decision</th><th>Reason</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const PRESETS=[
+  ["Safe: welcome.txt","read_file","welcome.txt"],
+  ["Safe: list docs","list_docs",""],
+  ["Attack: ../../.env","read_file","../../.env"],
+  ["Attack: /etc/passwd","read_file","/etc/passwd"],
+  ["Attack: encoded traversal","read_file","%2e%2e%2f%2e%2e%2fsecret.txt"],
+  ["Attack: execute_shell","execute_shell",""],
+];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+document.getElementById('presets').innerHTML=PRESETS.map((p,i)=>`<button onclick="preset(${i})">${p[0]}</button>`).join('');
+function preset(i){tool.value=PRESETS[i][1];path.value=PRESETS[i][2];send();}
+
+async function send(){
+  const args=tool.value==='read_file'||path.value?{path:path.value}:{};
+  const r=await fetch('/api/request',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tool:tool.value,arguments:args})});
+  const d=await r.json();
+  const v=document.getElementById('verdict');
+  v.className='verdict '+d.decision;
+  v.innerHTML=`<span class="tag ${d.decision}">${d.decision}</span> &nbsp;<small>${d.latency_ms} ms</small>
+    <p style="margin:8px 0 0">${d.reasons.map(esc).join('<br>')}</p>`+
+    (d.result?`<p style="margin:8px 0 0;color:var(--muted)">Tool output: <code>${esc(JSON.stringify(d.result)).slice(0,300)}</code></p>`:'');
+  refresh();
+}
+async function refresh(){
+  const [s,l]=await Promise.all([fetch('/api/stats').then(r=>r.json()),fetch('/api/logs').then(r=>r.json())]);
+  sTotal.textContent=s.total;sAllowed.textContent=s.allowed;sBlocked.textContent=s.blocked;
+  log.innerHTML=l.map(e=>`<tr><td>${e.time}</td><td><code>${esc(e.tool)}</code><br><small>${esc(JSON.stringify(e.arguments))}</small></td>
+    <td><span class="tag ${e.decision}">${e.decision}</span></td><td>${e.reasons.map(esc).join('<br>')}</td></tr>`).join('');
+}
+async function resetAll(){await fetch('/api/reset',{method:'POST'});document.getElementById('verdict').className='verdict';refresh();}
+refresh();
+</script>
+</body>
+</html>
