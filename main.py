@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import unquote
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -128,6 +129,16 @@ def record(entry: Dict[str, Any]) -> None:
 
 # -------------------------------------------------------------------- APP ---
 app = FastAPI(title="MCP Shield")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+    ],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.post("/api/request")
